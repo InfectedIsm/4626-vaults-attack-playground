@@ -1,0 +1,12 @@
+cache/
+out/
+
+# Ignore Environment Variables!
+.env
+
+# Ignore all vscode settings
+.vscode/
+
+# Ignore local misc files
+.DS_Store
+*.pem
