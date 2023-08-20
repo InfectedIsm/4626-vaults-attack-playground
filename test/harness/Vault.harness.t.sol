@@ -45,4 +45,8 @@ contract VaultHarness is Vault {
 		if (rounding == Rounding.Down) return _convertToAssets(shares,Math.Rounding.Down);
 		else return _convertToAssets(shares,Math.Rounding.Up);
 	}	
+
+	function exposed__decimalsOffset() external view returns (uint8) {
+        return _decimalsOffset();
+    }
 }
