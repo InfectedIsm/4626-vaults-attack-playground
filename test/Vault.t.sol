@@ -11,12 +11,15 @@ import {ERC20Mock, IERC20} from "../src/mock/ERC20Mock.sol";
 import {Rounding, PreUpdateVaultHarness, VaultHarness} from "./harness/Vault.harness.t.sol";
 
 contract VaultTest is Test {
+
+    //TODO : add a test to show the recoverd portion by an attacker in a post-update vault if:
+    // offset = 0,4,8, deposit = a0, donation = a1
     
     IERC4626 vault;
     IERC4626 preUpdateVault;
     ERC20Mock underlying;
 
-    uint256 constant INITIAL_BALANCE = 100 ether;
+    uint256 constant INITIAL_BALANCE = 1_000_000_000 ether;
 
     address alice;
     address bob;
@@ -92,7 +95,7 @@ contract VaultTest is Test {
         //this will inflate the totalAssets() value of the vault, resulting in a rounding to 0 for Alice when she will try
         //to mint shares
 		uint256 attackerFirstDeposit = 1 wei;
-		uint256 attackerInflationTransfer = 1 ether;
+		uint256 attackerInflationTransfer = 1 ether * 2*10**4;
 		uint256 victimDeposit = 1 ether;
 
         uint8 decimalsOffset = 4;
@@ -127,12 +130,8 @@ contract VaultTest is Test {
 
         uint256 aliceShares = vault.balanceOf(alice);
         uint256 bobShares = vault.balanceOf(bob);
-        
-        console.log("\nbefore anyone redeem, here's the simulation of what they get");
-        console.log("Alice's redeem availability:", vault.previewRedeem(aliceShares));
-        console.log("Bob's redeem availability:", vault.previewRedeem(bobShares));
 
-        console.log("\nIf the redeem in this order");
+        console.log("\nThen Alice and Bob redeem their shares for the equivalent in tokens");
         vm.prank(alice);
         uint256 aliceRealRedeem = vault.redeem(aliceShares, alice, alice);
         console.log("Alice redeeming first: ", aliceRealRedeem);
@@ -185,11 +184,7 @@ contract VaultTest is Test {
         uint256 aliceShares = preUpdateVault.balanceOf(alice);
         uint256 bobShares = preUpdateVault.balanceOf(bob);
         
-        console.log("\nbefore anyone redeem, here's the simulation of what they get");
-        console.log("Alice's redeem availability:", preUpdateVault.previewRedeem(aliceShares));
-        console.log("Bob's redeem availability:", preUpdateVault.previewRedeem(bobShares));
-
-        console.log("\nIf the redeem in this order");
+        console.log("\nThen Alice and Bob redeem their shares for the equivalent in tokens");
         vm.prank(alice);
         uint256 aliceRealRedeem = preUpdateVault.redeem(aliceShares, alice, alice);
         console.log("Alice redeeming first: ", aliceRealRedeem);
